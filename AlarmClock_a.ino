@@ -12,7 +12,7 @@
 #define DEBOUNCE_MS 20     //A debounce time of 20 milliseconds usually works well for tactile button switches.
 
 Button activateAlarmBtn(ACTIVATE_ALARM_BUTTON_PIN, PULLUP, INVERT, DEBOUNCE_MS);    //Declare the object myBtn usando el constructor: Button(pin, puEnable, invert, dbTime);
-Button resetAlarm(ACTIVATE_ALARM_BUTTON_PIN, PULLUP, INVERT, DEBOUNCE_MS);    //Declare the object myBtn usando el constructor: Button(pin, puEnable, invert, dbTime);
+//Button resetAlarm(ACTIVATE_ALARM_BUTTON_PIN, PULLUP, INVERT, DEBOUNCE_MS);    //Declare the object myBtn usando el constructor: Button(pin, puEnable, invert, dbTime);
 //------------------------------------------------------------------------------------------------------------------------------------------------
   
 
@@ -25,13 +25,13 @@ enum clockStatus {displayTime, alarmInFlow, alarmListening, configAlarm, configT
 clockStatus currentStatus = displayTime;
 
 // control buttons 
-const int resetAlarmPin = 4;
+const int resetAlarmBtn = 4;
 const int activateAlarm = 3;
 
 //variables para tiempo (hora) actual
 bool Update=false;
 unsigned char halfsecond = 0;
-unsigned char second = 55;
+unsigned char second = 50;
 unsigned char minute = 00;
 unsigned char hour = 12;
 
@@ -47,13 +47,13 @@ unsigned char hourAlarm = 12;
 bool chagingAlarm = false;
 bool alarmActivated = false;
 bool alarmRining = false;
-
+bool alarmTurnedOff = false;
 
 //Strings para variables alarma
 String strMinuteAlarm;
 String strHourAlarm;
 String strDispAlarm;
-String wakeUpAlarmMessage = "Los super amigos a despertar!";
+String wakeUpAlarmMessage = "Despierta! :D";
 
 //Variables para Temperatura
 unsigned char temp = 17;
@@ -82,74 +82,60 @@ void setup()
   //Encender la luz de fondo.
   lcd.backlight();
 
-  //Buttons
-  pinMode(resetAlarmPin, INPUT_PULLUP);
-  pinMode(activateAlarm, INPUT);
-
   //Leds
   pinMode(alarmActivatedLED, OUTPUT);
   
   //Inicializar y activar interrupcion por timer uno
   Timer1.initialize(500000);//timing for 500ms
   Timer1.attachInterrupt(TimingISR);//declare the interrupt serve routine:TimingISR
+  attachInterrupt(digitalPinToInterrupt(ACTIVATE_ALARM_BUTTON_PIN), AlarmChangeStatusBtn, CHANGE);
   
   Serial.begin(9600);
 }
 void loop()
 {
+  
   currentMillis=millis();
   TaskClock();
   currentMillis=millis();
   ActivatorAlarmListener();
-  //ConfigAlarmListener();
-  //ConfigTimeListener();
+}
+
+void AlarmChangeStatusBtn() {
+  activateAlarmBtn.read();
+  if (activateAlarmBtn.wasPressed()) {
+    if (currentStatus == alarmListening) {
+      alarmRining = false;
+      alarmTurnedOff = true;
+    } else {
+      alarmActivated = !alarmActivated;
+    }
+  }
 }
 
 void ActivatorAlarmListener() {
-  if (!alarmRining) activateAlarmBtn.read();
-  if (activateAlarmBtn.wasPressed() && !alarmRining) {
-    previousMillis_BtnActiveAlarm = currentMillis;
-    alarmActivated = !alarmActivated;
-    digitalWrite(alarmActivatedLED, alarmActivated);
-  }
+  digitalWrite(alarmActivatedLED, alarmActivated);
 }
 
 void DisplayMainTime() {
   TimeDisplay();        
   AlarmDisplay();  
   TemperatureDisplay();
-
+  if(alarmActivated) CheckAlarmTiming();
 }
 
 void TaskClock(){
   switch(currentStatus){
     case displayTime: 
       DisplayMainTime();
-      if (alarmActivated) {
-        CheckAlarmTiming();
-      }
       break;  
-    case alarmInFlow: 
+    case alarmInFlow:
       WakeUpAlarm();
       break;  
-    case alarmListening: 
-      Serial.println("turnodd listener");
+    case alarmListening:
       TurnOffAlarmListener();
       break;  
   }
-  
- /* 
-  if(currentMillis-previousMillis_TaskClock>=100){
-      previousMillis_TaskClock=previousMillis_CheckAlarm;
-      if(Update == true && !alarmInFlow){
-        DisplayMainTime();
-      }
-  }
-  if(currentMillis-previousMillis_CheckAlarm>=100 && alarmActivated){
-    previousMillis_CheckAlarm = currentMillis;
-    CheckAlarmTiming();
-  }
- */
 }
 
 void TimeDisplay(void)
@@ -179,11 +165,8 @@ void AlarmDisplay(void)
 
   if (hourAlarm<10) strHourAlarm=" " + (String) hourAlarm;
   else strHourAlarm=(String) hourAlarm;  
-
-  String alarmStatus = "off";
-  if (alarmActivated) alarmStatus = "on";
   
-  strDispAlarm="A " + strHourAlarm + ":" + strMinuteAlarm + alarmStatus;
+  strDispAlarm="A " + strHourAlarm + ":" + strMinuteAlarm;
 
   lcd.setCursor(0,1);
   lcd.print(strDispAlarm);
@@ -223,30 +206,23 @@ void TimingISR()
     }
     halfsecond = 0;
   }
+  // if alarm was turned off, activate it in the next minute 
+  if (minute == minuteAlarm + 1 && hour == hourAlarm) alarmTurnedOff = false;
 }
 
 void CheckAlarmTiming() {
-  if((minute == minuteAlarm && hour == hourAlarm) && !alarmRining) {
+  if((minute == minuteAlarm && hour == hourAlarm) && !alarmRining && !alarmTurnedOff) {
       currentStatus = alarmInFlow;
   }
 }
 
-void TurnOffAlarmListener() {
-  
-  if(alarmRining) activateAlarmBtn.read();
-  
 
-  if (activateAlarmBtn.wasPressed() && alarmRining) {
-    Serial.println("entro!!!");
-    alarmRining = !alarmRining;
+void TurnOffAlarmListener() {
+  if (!alarmRining) {
     digitalWrite(alarmInFlowLED, alarmRining);
     lcd.clear();
     currentStatus = displayTime;
   }
-  delay(1000);
-  //alarmInFlow = false;
-  //lcd.clear();
-  //DisplayMainTime();    
 }
 
 void WakeUpAlarm() {  
