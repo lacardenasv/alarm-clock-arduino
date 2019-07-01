@@ -4,24 +4,28 @@
 #include <Button.h>        
 
 //-----------------------------creacion de un objeto (myBtn) de la clase(Button) ---------------------------------------------------------------
-#define ACTIVATE_ALARM_BUTTON_PIN 2       //Connect a tactile button switch (or something similar)
-#define PULLUP true        //To keep things simple, we use the Arduino's internal pullup resistor.
-#define INVERT true        //Since the pullup resistor will keep the pin high unless the
-                           //switch is closed, this is negative logic, i.e. a high state
-                           //means the button is NOT pressed. (Assuming a normally open switch.)
-#define DEBOUNCE_MS 20     //A debounce time of 20 milliseconds usually works well for tactile button switches.
+#define PULLUP true        
+#define INVERT true        
+                           
+                           
+#define DEBOUNCE_MS 20     
 
-Button activateAlarmBtn(ACTIVATE_ALARM_BUTTON_PIN, PULLUP, INVERT, DEBOUNCE_MS);    //Declare the object myBtn usando el constructor: Button(pin, puEnable, invert, dbTime);
-//Button resetAlarm(ACTIVATE_ALARM_BUTTON_PIN, PULLUP, INVERT, DEBOUNCE_MS);    //Declare the object myBtn usando el constructor: Button(pin, puEnable, invert, dbTime);
-//------------------------------------------------------------------------------------------------------------------------------------------------
-  
+#define ACTIVATE_ALARM_BUTTON_PIN 2       
+#define SETTING_ALARM_BUTTON_PIN 3
+#define HOUR_BUTTON_PIN 4
+#define MINUTES_BUTTON_PIN 5
 
-//Crear el objeto lcd  dirección  0x27 y 16 columnas x 2 filas
+Button activateAlarmBtn(ACTIVATE_ALARM_BUTTON_PIN, PULLUP, INVERT, DEBOUNCE_MS);    
+Button setHourBtn(HOUR_BUTTON_PIN, PULLUP, INVERT, DEBOUNCE_MS);    
+Button setMinutesBtn(MINUTES_BUTTON_PIN, PULLUP, INVERT, DEBOUNCE_MS);    
+Button setAlarmBtn(SETTING_ALARM_BUTTON_PIN, PULLUP, INVERT, DEBOUNCE_MS);
+
 LiquidCrystal_I2C lcd(0x27,16,2);  //
 
 
+
 // clock states 
-enum clockStatus {displayTime, alarmInFlow, alarmListening, configAlarm, configTime};
+enum clockStatus {displayTime, alarmInFlow, alarmListening, swapToSetting, settingAlarmStatus, configTime};
 clockStatus currentStatus = displayTime;
 
 // control buttons 
@@ -48,12 +52,16 @@ bool chagingAlarm = false;
 bool alarmActivated = false;
 bool alarmRining = false;
 bool alarmTurnedOff = false;
+bool settingAlarm = false;
 
 //Strings para variables alarma
 String strMinuteAlarm;
 String strHourAlarm;
 String strDispAlarm;
 String wakeUpAlarmMessage = "Despierta! :D";
+
+bool settingHours = false;
+bool settingMinutes = false;
 
 //Variables para Temperatura
 unsigned char temp = 17;
@@ -73,57 +81,35 @@ unsigned long previousMillis_BtnActiveAlarm=0;
 const int alarmActivatedLED = 8;
 const int alarmInFlowLED = 9;
 
-void setup()
-{
-
-  // Inicializar el LCD
+void setup() {
   lcd.init();
-  
-  //Encender la luz de fondo.
   lcd.backlight();
-
   //Leds
   pinMode(alarmActivatedLED, OUTPUT);
-  
-  //Inicializar y activar interrupcion por timer uno
-  Timer1.initialize(500000);//timing for 500ms
-  Timer1.attachInterrupt(TimingISR);//declare the interrupt serve routine:TimingISR
-  attachInterrupt(digitalPinToInterrupt(ACTIVATE_ALARM_BUTTON_PIN), AlarmChangeStatusBtn, CHANGE);
+  pinMode(alarmInFlowLED, OUTPUT);
+
+  // Change time 
+  Timer1.initialize(500000);
+  Timer1.attachInterrupt(TimingISR);
+
+  //Setting button's interrupts
+  attachInterrupt(digitalPinToInterrupt(ACTIVATE_ALARM_BUTTON_PIN), ChangeAlarmStatusBtn, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(SETTING_ALARM_BUTTON_PIN), SettingAlarmBtn, CHANGE);
   
   Serial.begin(9600);
 }
-void loop()
-{
-  
+
+void loop() {
   currentMillis=millis();
   TaskClock();
   currentMillis=millis();
   ActivatorAlarmListener();
+  SettingHourBtn();
+  SettingMinutesBtn();
 }
 
-void AlarmChangeStatusBtn() {
-  activateAlarmBtn.read();
-  if (activateAlarmBtn.wasPressed()) {
-    if (currentStatus == alarmListening) {
-      alarmRining = false;
-      alarmTurnedOff = true;
-    } else {
-      alarmActivated = !alarmActivated;
-    }
-  }
-}
 
-void ActivatorAlarmListener() {
-  digitalWrite(alarmActivatedLED, alarmActivated);
-}
-
-void DisplayMainTime() {
-  TimeDisplay();        
-  AlarmDisplay();  
-  TemperatureDisplay();
-  if(alarmActivated) CheckAlarmTiming();
-}
-
+// Functions 
 void TaskClock(){
   switch(currentStatus){
     case displayTime: 
@@ -134,9 +120,29 @@ void TaskClock(){
       break;  
     case alarmListening:
       TurnOffAlarmListener();
-      break;  
+      break;
+    case swapToSetting:
+      WakeUpSettingAlarm();
+      break;
+    case settingAlarmStatus:
+      AlarmDisplay();
+      break;
   }
 }
+
+void DisplayMainTime() {
+  TimeDisplay();        
+  AlarmDisplay();  
+  TemperatureDisplay();
+  if(alarmActivated) CheckAlarmTiming();
+}
+
+void WakeUpSettingAlarm() {
+  lcd.clear();
+  lcd.print("Setting alarm");
+  currentStatus = settingAlarmStatus;
+}
+
 
 void TimeDisplay(void)
 {
@@ -232,4 +238,58 @@ void WakeUpAlarm() {
   digitalWrite(alarmInFlowLED, alarmRining);
   currentStatus = alarmListening;
   
+}
+void SettingHourBtn() {
+  setHourBtn.read();
+  if(setHourBtn.wasPressed()) {
+    if(currentStatus == settingAlarmStatus) {
+      hourAlarm++;
+      if (hourAlarm == 24) hourAlarm = 0;
+    } else {
+      hour++;
+      if (hour == 24) hour = 0;
+    }
+  }
+}
+
+void SettingMinutesBtn() {
+  setMinutesBtn.read();
+  if(setMinutesBtn.wasPressed()) {
+    if(currentStatus == settingAlarmStatus) {
+      minuteAlarm++;
+      if (minuteAlarm == 60) minuteAlarm = 0;
+    } else {
+      minute++;
+      if (minute == 60) minute = 0;
+    }
+    Serial.println(minute);
+  }
+}
+
+void SettingAlarmBtn() {
+  setAlarmBtn.read();
+  if(setAlarmBtn.wasPressed()) {
+    settingAlarm = !settingAlarm;
+    if(settingAlarm) {
+      currentStatus = swapToSetting;
+    } else {
+      currentStatus = displayTime;
+    }
+  }
+};
+
+void ChangeAlarmStatusBtn() {
+  activateAlarmBtn.read();
+  if (activateAlarmBtn.wasPressed()) {
+    if (currentStatus == alarmListening) {
+      alarmRining = false;
+      alarmTurnedOff = true;
+    } else {
+      alarmActivated = !alarmActivated;
+    }
+  }
+}
+
+void ActivatorAlarmListener() {
+  digitalWrite(alarmActivatedLED, alarmActivated);
 }
