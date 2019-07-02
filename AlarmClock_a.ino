@@ -2,14 +2,14 @@
 #include <Wire.h> 
 #include <LiquidCrystal_I2C.h>
 #include <Button.h>        
+#include <OneWire.h>                
+#include <DallasTemperature.h>
 
 //-----------------------------creacion de un objeto (myBtn) de la clase(Button) ---------------------------------------------------------------
-#define PULLUP true        
-#define INVERT true        
-                           
-                           
-#define DEBOUNCE_MS 20     
 
+#define PULLUP true        
+#define INVERT true                                                              
+#define DEBOUNCE_MS 20     
 #define ACTIVATE_ALARM_BUTTON_PIN 2       
 #define SETTING_ALARM_BUTTON_PIN 3
 #define HOUR_BUTTON_PIN 4
@@ -20,8 +20,12 @@ Button setHourBtn(HOUR_BUTTON_PIN, PULLUP, INVERT, DEBOUNCE_MS);
 Button setMinutesBtn(MINUTES_BUTTON_PIN, PULLUP, INVERT, DEBOUNCE_MS);    
 Button setAlarmBtn(SETTING_ALARM_BUTTON_PIN, PULLUP, INVERT, DEBOUNCE_MS);
 
-LiquidCrystal_I2C lcd(0x27,16,2);  //
+LiquidCrystal_I2C lcd(0x27,16,2);
 
+// Sensor variables
+#define TEMPERATURE_PIN 6
+OneWire temperatureConnection(TEMPERATURE_PIN);
+DallasTemperature temperatureSensor(&temperatureConnection);
 
 
 // clock states 
@@ -76,6 +80,7 @@ unsigned long currentMillis;
 //alarm multitasking 
 unsigned long previousMillis_CheckAlarm=0;
 unsigned long previousMillis_BtnActiveAlarm=0;
+unsigned long previousMillisCheckTemp=0;
 
 //leds 
 const int alarmActivatedLED = 8;
@@ -95,7 +100,9 @@ void setup() {
   //Setting button's interrupts
   attachInterrupt(digitalPinToInterrupt(ACTIVATE_ALARM_BUTTON_PIN), ChangeAlarmStatusBtn, CHANGE);
   attachInterrupt(digitalPinToInterrupt(SETTING_ALARM_BUTTON_PIN), SettingAlarmBtn, CHANGE);
-  
+
+  // Setting temperature sensor 
+  temperatureSensor.begin();
   Serial.begin(9600);
 }
 
@@ -106,6 +113,8 @@ void loop() {
   ActivatorAlarmListener();
   SettingHourBtn();
   SettingMinutesBtn();
+  currentMillis=millis();
+  CheckTemperature();
 }
 
 
@@ -292,4 +301,11 @@ void ChangeAlarmStatusBtn() {
 
 void ActivatorAlarmListener() {
   digitalWrite(alarmActivatedLED, alarmActivated);
+}
+
+void CheckTemperature() {
+  if (currentMillis - previousMillisCheckTemp >= 100) {
+    temperatureSensor.requestTemperatures();
+    temp = temperatureSensor.getTempCByIndex(0);
+  }
 }
