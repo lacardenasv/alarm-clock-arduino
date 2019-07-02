@@ -10,15 +10,17 @@
 #define PULLUP true        
 #define INVERT true                                                              
 #define DEBOUNCE_MS 20     
-#define ACTIVATE_ALARM_BUTTON_PIN 2       
-#define SETTING_ALARM_BUTTON_PIN 3
-#define HOUR_BUTTON_PIN 4
-#define MINUTES_BUTTON_PIN 5
+#define ACTIVATE_ALARM_BUTTON_PIN 2 // amarillo       
+#define SETTING_ALARM_BUTTON_PIN 3 // verde
+#define HOUR_BUTTON_PIN 4 // cafe 
+#define MINUTES_BUTTON_PIN 5 // azul 
+#define LCD_LED_PIN 7 // naranja 
 
 Button activateAlarmBtn(ACTIVATE_ALARM_BUTTON_PIN, PULLUP, INVERT, DEBOUNCE_MS);    
 Button setHourBtn(HOUR_BUTTON_PIN, PULLUP, INVERT, DEBOUNCE_MS);    
 Button setMinutesBtn(MINUTES_BUTTON_PIN, PULLUP, INVERT, DEBOUNCE_MS);    
 Button setAlarmBtn(SETTING_ALARM_BUTTON_PIN, PULLUP, INVERT, DEBOUNCE_MS);
+Button LCDledBtn(LCD_LED_PIN, PULLUP, INVERT, DEBOUNCE_MS);
 
 LiquidCrystal_I2C lcd(0x27,16,2);
 
@@ -32,9 +34,11 @@ DallasTemperature temperatureSensor(&temperatureConnection);
 enum clockStatus {displayTime, alarmInFlow, alarmListening, swapToSetting, settingAlarmStatus, configTime};
 clockStatus currentStatus = displayTime;
 
-// control buttons 
+// LCD led 
 const int resetAlarmBtn = 4;
 const int activateAlarm = 3;
+
+bool LCDLedOn = false;
 
 //variables para tiempo (hora) actual
 bool Update=false;
@@ -77,18 +81,21 @@ String strDispTemp;
 unsigned long previousMillis_TaskClock=0;
 unsigned long currentMillis;
 
-//alarm multitasking 
+//multitasking 
 unsigned long previousMillis_CheckAlarm=0;
 unsigned long previousMillis_BtnActiveAlarm=0;
 unsigned long previousMillisCheckTemp=0;
+unsigned long previousMillisCheckLCDled=0;
 
 //leds 
 const int alarmActivatedLED = 8;
 const int alarmInFlowLED = 9;
+const int buzzerPin = 10;
 
 void setup() {
   lcd.init();
   lcd.backlight();
+  LCDLedOn = true;
   //Leds
   pinMode(alarmActivatedLED, OUTPUT);
   pinMode(alarmInFlowLED, OUTPUT);
@@ -115,6 +122,8 @@ void loop() {
   SettingMinutesBtn();
   currentMillis=millis();
   CheckTemperature();
+  currentMillis=millis();
+  LCDLedListener();
 }
 
 
@@ -222,7 +231,8 @@ void TimingISR()
     halfsecond = 0;
   }
   // if alarm was turned off, activate it in the next minute 
-  if (minute == minuteAlarm + 1 && hour == hourAlarm) alarmTurnedOff = false;
+  if (minute >= minuteAlarm + 1 && hour == hourAlarm) alarmTurnedOff = false;
+  Serial.println(alarmTurnedOff);
 }
 
 void CheckAlarmTiming() {
@@ -253,6 +263,7 @@ void SettingHourBtn() {
   if(setHourBtn.wasPressed()) {
     if(currentStatus == settingAlarmStatus) {
       hourAlarm++;
+      alarmTurnedOff = false;
       if (hourAlarm == 24) hourAlarm = 0;
     } else {
       hour++;
@@ -266,6 +277,7 @@ void SettingMinutesBtn() {
   if(setMinutesBtn.wasPressed()) {
     if(currentStatus == settingAlarmStatus) {
       minuteAlarm++;
+      alarmTurnedOff = false;
       if (minuteAlarm == 60) minuteAlarm = 0;
     } else {
       minute++;
@@ -277,7 +289,8 @@ void SettingMinutesBtn() {
 
 void SettingAlarmBtn() {
   setAlarmBtn.read();
-  if(setAlarmBtn.wasPressed()) {
+  bool accessToSetAlarm = (currentStatus != alarmListening && currentStatus != alarmInFlow);
+  if(setAlarmBtn.wasPressed() && accessToSetAlarm) {
     settingAlarm = !settingAlarm;
     if(settingAlarm) {
       currentStatus = swapToSetting;
@@ -305,7 +318,26 @@ void ActivatorAlarmListener() {
 
 void CheckTemperature() {
   if (currentMillis - previousMillisCheckTemp >= 100) {
+    previousMillisCheckTemp = currentMillis;
     temperatureSensor.requestTemperatures();
     temp = temperatureSensor.getTempCByIndex(0);
+  }
+}
+
+void LCDLedListener() {
+  if (currentMillis - previousMillisCheckLCDled >= 100) {
+    previousMillisCheckLCDled = currentMillis;
+    LCDledBtn.read();
+    
+    if(LCDledBtn.wasPressed()) {
+      LCDLedOn = !LCDLedOn;  
+      if (LCDLedOn) {
+        lcd.backlight();
+      } else {
+        lcd.noBacklight();
+      }
+    
+    }
+    
   }
 }
