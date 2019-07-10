@@ -11,7 +11,7 @@
 #define INVERT true                                                              
 #define DEBOUNCE_MS 20     
 #define ACTIVATE_ALARM_BUTTON_PIN 2 // amarillo       
-#define SETTING_ALARM_BUTTON_PIN 3 // verde
+#define SETTING_ALARM_BUTTON_PIN 3 // morado......................
 #define HOUR_BUTTON_PIN 4 // cafe 
 #define MINUTES_BUTTON_PIN 5 // azul 
 #define LCD_LED_PIN 7 // naranja 
@@ -90,7 +90,13 @@ unsigned long previousMillisCheckLCDled=0;
 //leds 
 const int alarmActivatedLED = 8;
 const int alarmInFlowLED = 9;
+
+// Buzzer variables
 const int buzzerPin = 10;
+unsigned long previousSound=0;
+unsigned long currentMillisSound=0;
+bool buzzedActivated=false;
+
 
 void setup() {
   lcd.init();
@@ -99,6 +105,7 @@ void setup() {
   //Leds
   pinMode(alarmActivatedLED, OUTPUT);
   pinMode(alarmInFlowLED, OUTPUT);
+  pinMode(buzzerPin, OUTPUT);
 
   // Change time 
   Timer1.initialize(500000);
@@ -137,6 +144,7 @@ void TaskClock(){
       WakeUpAlarm();
       break;  
     case alarmListening:
+      BuzzerSound();
       TurnOffAlarmListener();
       break;
     case swapToSetting:
@@ -207,8 +215,6 @@ void TemperatureDisplay(void)
   lcd.print(strDispTemp);
   lcd.setCursor(15,1);
   lcd.print("c");
-  
-  
 }
 
 void TimingISR()
@@ -232,7 +238,7 @@ void TimingISR()
   }
   // if alarm was turned off, activate it in the next minute 
   if (minute >= minuteAlarm + 1 && hour == hourAlarm) alarmTurnedOff = false;
-  Serial.println(alarmTurnedOff);
+  //Serial.println(alarmTurnedOff);
 }
 
 void CheckAlarmTiming() {
@@ -245,6 +251,7 @@ void CheckAlarmTiming() {
 void TurnOffAlarmListener() {
   if (!alarmRining) {
     digitalWrite(alarmInFlowLED, alarmRining);
+    digitalWrite(buzzerPin, LOW);
     lcd.clear();
     currentStatus = displayTime;
   }
@@ -261,13 +268,16 @@ void WakeUpAlarm() {
 void SettingHourBtn() {
   setHourBtn.read();
   if(setHourBtn.wasPressed()) {
-    if(currentStatus == settingAlarmStatus) {
-      hourAlarm++;
-      alarmTurnedOff = false;
-      if (hourAlarm == 24) hourAlarm = 0;
-    } else {
-      hour++;
-      if (hour == 24) hour = 0;
+    switch(currentStatus) {
+      case displayTime: 
+        hour++;
+        if (hour == 24) hour = 0;
+        break;
+      case settingAlarmStatus: 
+        hourAlarm++;
+        alarmTurnedOff = false;
+        if (hourAlarm == 24) hourAlarm = 0;
+        break;  
     }
   }
 }
@@ -275,15 +285,17 @@ void SettingHourBtn() {
 void SettingMinutesBtn() {
   setMinutesBtn.read();
   if(setMinutesBtn.wasPressed()) {
-    if(currentStatus == settingAlarmStatus) {
-      minuteAlarm++;
-      alarmTurnedOff = false;
-      if (minuteAlarm == 60) minuteAlarm = 0;
-    } else {
-      minute++;
-      if (minute == 60) minute = 0;
+    switch(currentStatus) {
+      case displayTime: 
+        minute++;
+        if (minute == 60) minute = 0;
+        break;
+      case settingAlarmStatus: 
+        minuteAlarm++;
+        alarmTurnedOff = false;
+        if (minuteAlarm == 60) minuteAlarm = 0;
+        break;  
     }
-    Serial.println(minute);
   }
 }
 
@@ -317,7 +329,7 @@ void ActivatorAlarmListener() {
 }
 
 void CheckTemperature() {
-  if (currentMillis - previousMillisCheckTemp >= 100) {
+  if (currentMillis - previousMillisCheckTemp >= 5000) {
     previousMillisCheckTemp = currentMillis;
     temperatureSensor.requestTemperatures();
     temp = temperatureSensor.getTempCByIndex(0);
@@ -340,4 +352,12 @@ void LCDLedListener() {
     }
     
   }
+}
+
+void BuzzerSound() {
+  if (currentMillis - previousSound >= 250) {
+    previousSound = currentMillis;
+    buzzedActivated = !buzzedActivated;
+    digitalWrite(buzzerPin, buzzedActivated);
+  } 
 }
